@@ -1,0 +1,183 @@
+REFINEMENT
+   GestServ_r
+REFINES
+   GestServ
+
+SETS
+	OKKO = {ok, ko}
+
+CONCRETE_VARIABLES
+    c_lesServices,
+    c_lesProfils,
+    c_lesProcessus,
+    c_lesNoms,
+    c_aSouscrit,
+    c_estDansEtat,
+    c_typeAcces
+    
+ABSTRACT_VARIABLES
+    donneAcces,
+    estDeType,
+   profilAssocie ,
+   nomService,
+   utilise
+   
+INVARIANT
+    c_lesServices : SERVICES --> OKKO
+    & lesServices = c_lesServices~[{ok}]
+    & c_lesProfils : PROFILS --> OKKO
+    & lesProfils = c_lesProfils~[{ok}]
+    & c_lesProcessus : PROCESSUS --> OKKO
+    & lesProcessus = c_lesProcessus~[{ok}]
+    & c_lesNoms : NOMS --> OKKO
+    & lesNoms = c_lesNoms~[{ok}]
+    & c_aSouscrit : (PROCESSUS * (SERVICES)) +-> 0..1
+    & aSouscrit = dom(c_aSouscrit |> {1})
+    & c_estDansEtat : SERVICES --> ETAT
+    & estDansEtat = (lesServices <| c_estDansEtat)
+    & c_typeAcces : SERVICES --> TYPE_EXCLUSIF
+    & typeAcces = (lesServices <| c_typeAcces)
+
+
+INITIALISATION
+    c_lesServices := (SERVICES)*{ko} ;
+    c_lesProfils := (PROFILS)*{ko};
+    c_lesProcessus := (PROCESSUS)*{ko};
+    c_lesNoms := (NOMS)*{ko};
+    c_aSouscrit := (PROCESSUS*(SERVICES))*{0};
+    c_estDansEtat := (SERVICES)*{ETEINT};
+    c_typeAcces := (SERVICES)*{NON_EXCLUSIF};
+    nomService := {} ||
+    donneAcces := {} ||
+   estDeType := {} ||
+   profilAssocie := {} ||
+   utilise := {}
+
+OPERATIONS
+   ajouterService ( ss , name ) =
+   BEGIN
+       c_lesServices(ss) := ok ||
+       c_lesNoms(name) := ok ||
+       nomService := nomService \/ {(ss |-> name)} ||
+       c_estDansEtat(ss) := ETEINT ||
+       estDeType := estDeType \/ { ( ss |-> NON_CONTRAINT ) } ||
+       c_typeAcces(ss) := NON_EXCLUSIF
+   END
+   ;
+
+   supprimerService ( ss ) =
+   BEGIN
+       ANY name
+       WHERE
+           name : NOMS & name = nomService(ss) ( ss )
+       THEN
+           donneAcces := donneAcces |>> {ss} ||
+           utilise := utilise |>> { ss } ||
+           c_estDansEtat(ss) := ETEINT ||
+           estDeType := { ss } <<| estDeType ||
+           c_typeAcces(ss) := NON_EXCLUSIF ||
+           nomService := {ss} <<| nomService ||
+           c_aSouscrit := c_aSouscrit <+ (PROCESSUS*{ss})*{0}||
+           c_lesNoms(name) := ko ||
+           c_lesServices(ss) := ko
+       END
+   END
+   ;
+
+   contraindreService ( ss , prof ) =
+   BEGIN
+       estDeType ( ss ) := CONTRAINT ||
+       donneAcces := donneAcces \/ {(prof |-> ss)}
+   END
+   ;
+
+   supprimerRestriction ( ss , prof ) =
+   BEGIN
+       donneAcces := donneAcces - {(prof |-> ss)}
+		    || 	IF (donneAcces |> {ss} = {})
+		    	THEN estDeType(ss) := NON_CONTRAINT
+		        END
+   END
+   ;
+
+   interrompreService ( ss ) =
+   BEGIN
+       c_estDansEtat(ss) := ETEINT
+   END
+   ;
+
+   activerService ( ss ) =
+   BEGIN
+       c_estDansEtat(ss) := ACTIF
+   END
+   ;
+
+   ajouterProfil ( prof ) =
+   BEGIN
+       c_lesProfils(prof) := ok
+   END
+   ;
+
+   ajouterProcessus(proc,prof) =
+   BEGIN
+       c_lesProcessus(proc) := ok;
+       profilAssocie := profilAssocie \/ { ( proc |-> prof ) }
+   END
+   ;
+
+   supprimerProcessus ( proc ) =
+   BEGIN
+       c_lesProcessus(proc) := ko;
+       profilAssocie := { proc } <<| profilAssocie ||
+       c_aSouscrit := c_aSouscrit <+ ({proc}*SERVICES)*{0}||
+       utilise := { proc } <<| utilise
+   END
+   ;
+
+   modifierProfilProcessus ( proc , prof ) =
+   BEGIN
+       profilAssocie ( proc ) := prof
+   END
+   ;
+
+   souscrireService ( proc , ss ) =
+   BEGIN
+       c_aSouscrit(proc |-> ss):= 1
+   END
+   ;
+
+   suspendreSouscription ( proc , ss ) =
+   BEGIN
+       c_aSouscrit(proc |-> ss) := 0
+   END
+   ;
+
+   res <-- verificationAccesService ( ss ) =
+   BEGIN
+       IF ( c_typeAcces(ss) = EXCLUSIF )
+       THEN
+           IF ( utilise |>> { ss } = {} )
+           THEN
+               res := TRUE
+           ELSE
+               res := FALSE
+           END
+       ELSE
+           res := TRUE
+       END
+   END
+   ;
+
+   res <-- demanderService ( proc , ss ) =
+   BEGIN
+       utilise ( proc ) := ss ||
+       res := ss
+   END
+   ;
+
+   libererService ( proc , ss ) =
+   BEGIN
+       utilise := utilise - { ( proc |-> ss ) }
+   END
+
+END
